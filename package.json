@@ -1,0 +1,31 @@
+{
+  "name": "triage-ai",
+  "version": "1.0.0",
+  "description": "TRIAGE AI — Universal Emergency & Action Intelligence. A Gemini-powered bridge that transforms unstructured, messy real-world inputs into structured, verified, life-saving actions.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/vitest run"
+  },
+  "keywords": [
+    "gemini",
+    "ai",
+    "triage",
+    "emergency",
+    "promptwars",
+    "google"
+  ],
+  "author": "TrieWar",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}

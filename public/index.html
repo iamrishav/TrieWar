@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="TRIAGE AI — Universal Emergency & Action Intelligence. Transform unstructured inputs into structured, verified, life-saving actions powered by Google Gemini.">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>TRIAGE AI — From Chaos to Clarity</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <!-- Skip Navigation for Accessibility -->
+  <a href="#main-input" class="skip-link" id="skip-nav">Skip to main content</a>
+
+  <!-- ── App Shell ──────────────────────────────────────────────── -->
+  <div class="app" id="app">
+    
+    <!-- ── Header ─────────────────────────────────────────────── -->
+    <header class="header" role="banner">
+      <div class="header__brand">
+        <div class="header__logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="32" height="32">
+            <circle cx="16" cy="16" r="14" fill="none" stroke="url(#logo-grad)" stroke-width="2.5"/>
+            <path d="M16 6 L16 26 M10 12 L16 6 L22 12" fill="none" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ef4444"/>
+                <stop offset="50%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#22c55e"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1 class="header__title">TRIAGE <span class="header__title-accent">AI</span></h1>
+          <p class="header__subtitle">From Chaos to Clarity, Instantly</p>
+        </div>
+      </div>
+      <div class="header__actions">
+        <button class="btn btn--icon" id="btn-a11y" aria-label="Toggle high contrast mode" title="High Contrast">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2 A10 10 0 0 1 12 22 Z"/>
+          </svg>
+        </button>
+        <button class="btn btn--icon" id="btn-history" aria-label="View history" title="History">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Main Content ───────────────────────────────────────── -->
+    <main class="main" role="main">
+      
+      <!-- ── Hero / Input Section ────────────────────────────── -->
+      <section class="hero" aria-label="Input section">
+        <div class="hero__content">
+          <h2 class="hero__headline">
+            Transform <span class="text-gradient">Any Input</span> Into<br>
+            Life-Saving <span class="text-gradient">Actions</span>
+          </h2>
+          <p class="hero__description">
+            Voice, photos, medical records, accident reports, disaster alerts — 
+            throw anything at me. I'll structure it, verify it, and tell you exactly what to do.
+          </p>
+        </div>
+
+        <!-- ── Universal Input Bar ───────────────────────────── -->
+        <div class="input-zone" id="input-zone">
+          <div class="input-bar" id="input-bar">
+            <div class="input-bar__field-wrap">
+              <textarea 
+                class="input-bar__field" 
+                id="main-input" 
+                placeholder="Describe any situation, paste medical records, or ask about an emergency..."
+                rows="1"
+                aria-label="Describe your situation"
+                autofocus
+              ></textarea>
+              <div class="input-bar__actions">
+                <button class="btn btn--input-action" id="btn-voice" aria-label="Voice input" title="Speak">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                </button>
+                <button class="btn btn--input-action" id="btn-camera" aria-label="Camera input" title="Camera">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </button>
+                <button class="btn btn--input-action" id="btn-upload" aria-label="Upload file" title="Upload">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                </button>
+                <input type="file" id="file-input" class="sr-only" accept="image/*,.pdf,.txt,.doc,.docx" aria-label="Upload a file">
+              </div>
+            </div>
+            <button class="btn btn--primary btn--submit" id="btn-submit" aria-label="Analyze input">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+              <span>Triage</span>
+            </button>
+          </div>
+
+          <!-- ── Image Preview ───────────────────────────────── -->
+          <div class="image-preview" id="image-preview" hidden>
+            <img id="preview-img" alt="Uploaded image preview">
+            <button class="btn btn--icon btn--remove-img" id="btn-remove-img" aria-label="Remove image">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- ── Drop Zone Overlay ───────────────────────────── -->
+          <div class="drop-zone" id="drop-zone" hidden aria-hidden="true">
+            <div class="drop-zone__content">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <p>Drop image or document here</p>
+            </div>
+          </div>
+
+          <!-- ── Voice Recording Indicator ────────────────────── -->
+          <div class="voice-indicator" id="voice-indicator" hidden>
+            <div class="voice-indicator__pulse"></div>
+            <span>Listening... Speak now</span>
+            <button class="btn btn--small btn--danger" id="btn-stop-voice">Stop</button>
+          </div>
+
+          <!-- ── Camera Modal ─────────────────────────────────── -->
+          <div class="camera-modal" id="camera-modal" hidden role="dialog" aria-label="Camera capture" aria-modal="true">
+            <div class="camera-modal__content">
+              <video id="camera-video" autoplay playsinline></video>
+              <canvas id="camera-canvas" hidden></canvas>
+              <div class="camera-modal__actions">
+                <button class="btn btn--primary" id="btn-capture">📸 Capture</button>
+                <button class="btn btn--ghost" id="btn-close-camera">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Quick Scenario Buttons ─────────────────────────── -->
+        <div class="scenarios" aria-label="Quick scenario examples">
+          <p class="scenarios__label">Try a scenario:</p>
+          <div class="scenarios__list">
+            <button class="btn btn--scenario" data-scenario="I found someone unconscious on the street. They are not breathing properly and have a head wound. I don't know what to do." aria-label="Medical emergency scenario">
+              <span class="scenario-icon">🏥</span> Medical Emergency
+            </button>
+            <button class="btn btn--scenario" data-scenario="There's been a major car accident on NH-48 highway. Multiple vehicles involved, I can see smoke coming from one car. People are trapped inside. It happened about 2 minutes ago." aria-label="Road accident scenario">
+              <span class="scenario-icon">🚗</span> Road Accident
+            </button>
+            <button class="btn btn--scenario" data-scenario="Heavy flooding in our area. Water level is rising fast, already reached knee level. We are on the ground floor with elderly parents and two children. Need to know what to do urgently." aria-label="Natural disaster scenario">
+              <span class="scenario-icon">🌊</span> Natural Disaster
+            </button>
+            <button class="btn btn--scenario" data-scenario="Patient: Ramesh Kumar, Age: 58, Male. History: Type 2 Diabetes since 2015, Hypertension since 2018. Current medications: Metformin 500mg twice daily, Amlodipine 5mg once daily, Aspirin 75mg. Recent complaints: Persistent chest discomfort for 3 days, mild breathlessness on exertion, occasional dizziness. Last BP reading: 150/95. Fasting blood sugar: 210 mg/dL. Please analyze and provide recommendations." aria-label="Health records scenario">
+              <span class="scenario-icon">📋</span> Health Records
+            </button>
+            <button class="btn btn--scenario" data-scenario="I suspect someone is following me. I'm walking alone on a dimly lit street at night. They've been behind me for the last 3 blocks. I'm scared and don't know what to do. I'm near MG Road metro station." aria-label="Personal safety scenario">
+              <span class="scenario-icon">🛡️</span> Personal Safety
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Results Section ──────────────────────────────────── -->
+      <section class="results" id="results" hidden aria-label="Triage results" aria-live="polite">
+        
+        <!-- Loading State -->
+        <div class="loading" id="loading" hidden>
+          <div class="loading__pipeline">
+            <div class="loading__stage" data-stage="classifying">
+              <div class="loading__dot"></div>
+              <span>Classifying input...</span>
+            </div>
+            <div class="loading__connector"></div>
+            <div class="loading__stage" data-stage="enriching">
+              <div class="loading__dot"></div>
+              <span>Enriching with context...</span>
+            </div>
+            <div class="loading__connector"></div>
+            <div class="loading__stage" data-stage="structuring">
+              <div class="loading__dot"></div>
+              <span>Structuring actions...</span>
+            </div>
+            <div class="loading__connector"></div>
+            <div class="loading__stage" data-stage="verifying">
+              <div class="loading__dot"></div>
+              <span>Verifying information...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results Container -->
+        <div class="results__container" id="results-container" hidden></div>
+      </section>
+    </main>
+
+    <!-- ── History Sidebar ────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar" hidden role="complementary" aria-label="Query history">
+      <div class="sidebar__header">
+        <h2>History</h2>
+        <button class="btn btn--icon" id="btn-close-sidebar" aria-label="Close history">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="sidebar__list" id="history-list"></div>
+    </aside>
+
+    <!-- ── Footer ─────────────────────────────────────────────── -->
+    <footer class="footer" role="contentinfo">
+      <p>
+        Powered by <strong>Google Gemini</strong> · Built for 
+        <strong>PromptWars</strong> · 
+        <span class="footer__warning">⚠️ In life-threatening emergencies, always call 112 directly</span>
+      </p>
+    </footer>
+  </div>
+
+  <!-- ── Toast Notifications ──────────────────────────────────── -->
+  <div class="toast-container" id="toast-container" aria-live="assertive" role="alert"></div>
+
+  <!-- ── Screen Reader Announcements ──────────────────────────── -->
+  <div class="sr-only" id="sr-announcer" aria-live="assertive" aria-atomic="true"></div>
+
+  <script src="/js/accessibility.js"></script>
+  <script src="/js/api-client.js"></script>
+  <script src="/js/input-handler.js"></script>
+  <script src="/js/renderer.js"></script>
+  <script src="/js/map-service.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
