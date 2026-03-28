@@ -1,8 +1,28 @@
+/**
+ * TRIAGE AI — Gemini AI Service
+ *
+ * Server-side integration with Google Gemini 2.0 Flash for:
+ * - Multimodal triage analysis (text + image)
+ * - Structured JSON output with response schema enforcement
+ * - Google Search grounding for claim verification
+ *
+ * Uses `@google/genai` SDK for efficient, typed API communication.
+ *
+ * @module services/gemini-service
+ */
+
 import '../polyfill.js';
 import { GoogleGenAI } from '@google/genai';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import logger from '../utils/logger.js';
+import {
+  GEMINI_MODEL,
+  GEMINI_MAX_OUTPUT_TOKENS,
+  GEMINI_VERIFICATION_MAX_TOKENS,
+  GEMINI_TRIAGE_TEMPERATURE,
+  GEMINI_VERIFICATION_TEMPERATURE,
+  GEMINI_TOP_P,
+  MAX_VERIFICATION_QUERIES,
+} from '../utils/constants.js';
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -167,7 +187,6 @@ export async function processWithGemini({ text, image, inputType }) {
 
     // Add image content if present (multimodal input)
     if (image) {
-      // Image should be base64 encoded
       const imageData = image.replace(/^data:image\/\w+;base64,/, '');
       parts.push({
         inlineData: {
@@ -185,15 +204,15 @@ export async function processWithGemini({ text, image, inputType }) {
 
     // Call Gemini API with structured output schema
     const response = await genAI.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_MODEL,
       contents: [{ role: 'user', parts }],
       config: {
         systemInstruction: TRIAGE_SYSTEM_INSTRUCTION,
         responseMimeType: 'application/json',
         responseSchema: TRIAGE_RESPONSE_SCHEMA,
-        temperature: 0.3,
-        maxOutputTokens: 4096,
-        topP: 0.8,
+        temperature: GEMINI_TRIAGE_TEMPERATURE,
+        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+        topP: GEMINI_TOP_P,
       },
     });
 
@@ -222,9 +241,9 @@ export async function processWithGemini({ text, image, inputType }) {
     return parsed;
   } catch (error) {
     if (error.status === 429) {
-      console.error('Gemini API Quota Exceeded (429). Please wait for quota to reset or use a different key.');
+      logger.error('Gemini API Quota Exceeded (429). Please wait for quota to reset or use a different key.', error);
     } else {
-      console.error('Gemini processing error:', error);
+      logger.error('Gemini processing error', error);
     }
     throw error;
   }
@@ -234,60 +253,76 @@ export async function processWithGemini({ text, image, inputType }) {
  * Verify claims using Google Search grounding through Gemini.
  * Cross-checks triage findings against live web data for accuracy.
  *
- * Uses Gemini's built-in Google Search tool to perform grounded verification,
- * returning confidence scores and source references.
+ * Uses `Promise.allSettled` to run verification queries concurrently,
+ * significantly reducing total verification latency.
  *
- * @param {string[]} queries - Array of claims/queries to verify (max 3 processed)
+ * @param {string[]} queries - Array of claims/queries to verify (max {@link MAX_VERIFICATION_QUERIES} processed)
  * @returns {Promise<Object[]>} Array of verification results with confidence scores
  */
 export async function verifyWithGrounding(queries) {
+  if (!queries || queries.length === 0) return [];
+
   try {
-    if (!queries || queries.length === 0) return [];
+    const queriesToVerify = queries.slice(0, MAX_VERIFICATION_QUERIES);
 
-    const verifications = [];
+    // Run all verification queries concurrently for efficiency
+    const results = await Promise.allSettled(
+      queriesToVerify.map((query) => verifySingleClaim(query))
+    );
 
-    for (const query of queries.slice(0, 3)) {
-      const response = await genAI.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `Verify this claim and provide a factual assessment with sources: "${query}". Respond with JSON: {"claim": "${query}", "verified": true|false|"partially", "confidence": 0.0-1.0, "summary": "brief verification result", "sources": ["source names"]}`,
-              },
-            ],
-          },
-        ],
-        config: {
-          tools: [{ googleSearch: {} }],
-          temperature: 0.1,
-          maxOutputTokens: 1024,
-        },
-      });
-
-      const text = response.text.trim();
-      try {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          verifications.push(JSON.parse(jsonMatch[0]));
-        }
-      } catch {
-        verifications.push({
-          claim: query,
-          verified: 'unknown',
-          confidence: 0,
-          summary: 'Verification could not be completed',
-          sources: [],
-        });
-      }
-    }
-
-    return verifications;
+    return results
+      .filter((r) => r.status === 'fulfilled' && r.value !== null)
+      .map((r) => r.value);
   } catch (error) {
-    console.error('Grounding verification error:', error);
+    logger.error('Grounding verification error', error);
     return [];
   }
+}
+
+/**
+ * Verify a single claim using Google Search grounding.
+ *
+ * @param {string} query - The claim to verify
+ * @returns {Promise<Object|null>} Verification result or null on failure
+ * @private
+ */
+async function verifySingleClaim(query) {
+  const response = await genAI.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: `Verify this claim and provide a factual assessment with sources: "${query}". Respond with JSON: {"claim": "${query}", "verified": true|false|"partially", "confidence": 0.0-1.0, "summary": "brief verification result", "sources": ["source names"]}`,
+          },
+        ],
+      },
+    ],
+    config: {
+      tools: [{ googleSearch: {} }],
+      temperature: GEMINI_VERIFICATION_TEMPERATURE,
+      maxOutputTokens: GEMINI_VERIFICATION_MAX_TOKENS,
+    },
+  });
+
+  const text = response.text.trim();
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch {
+    // Parse failure — return structured fallback
+  }
+
+  return {
+    claim: query,
+    verified: 'unknown',
+    confidence: 0,
+    summary: 'Verification could not be completed',
+    sources: [],
+  };
 }
 
 /**
@@ -297,6 +332,7 @@ export async function verifyWithGrounding(queries) {
  * @param {string} text - Raw text input from the user
  * @param {string} inputType - Type of input (voice, camera, file, text)
  * @returns {string} Formatted prompt with context prefix
+ * @private
  */
 function buildPrompt(text, inputType) {
   const typeContext = {
@@ -316,6 +352,7 @@ function buildPrompt(text, inputType) {
  *
  * @param {string} base64String - Base64 encoded data URL or raw base64
  * @returns {string} Detected MIME type (defaults to 'image/jpeg')
+ * @private
  */
 function detectMimeType(base64String) {
   if (base64String.startsWith('data:')) {
