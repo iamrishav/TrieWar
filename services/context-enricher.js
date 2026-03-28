@@ -1,18 +1,36 @@
 /**
- * Context Enricher — Adds real-world context to raw input
- * 
- * Enriches the user's input with:
- * - Location context (if provided by browser geolocation)
- * - Time-of-day context (rush hour, night, etc.)
- * - Day-of-week context (weekday/weekend affects service availability)
- * - Season/weather context
+ * TRIAGE AI — Context Enricher Service
+ *
+ * Enriches raw user input with real-world contextual information
+ * before sending to the Gemini AI model. This context helps produce
+ * more relevant and location/time-aware emergency responses.
+ *
+ * Enrichment types:
+ * - **Time context**: Rush hour, night, weekend awareness (affects service availability)
+ * - **Location context**: GPS coordinates for nearby emergency services
+ * - **Seasonal context**: Monsoon floods, summer heat, dengue season (India-specific)
+ * - **Input type hints**: Voice transcription caveats, image analysis triggers
+ * - **Pre-classification**: Category hints from keyword-based pre-filtering
+ *
+ * @module context-enricher
  */
 
 /**
- * Enrich the input with contextual information
- * @param {Object} input - Raw user input
- * @param {Object} classification - Pre-classification from Stage 1
- * @returns {Object} Enriched input
+ * Enrich the user's input with contextual information for better AI processing.
+ * Adds time, location, season, and input type context to help Gemini produce
+ * more relevant and locally-appropriate emergency responses.
+ *
+ * @param {Object} input - Raw user input data
+ * @param {string} [input.text] - Text input from the user
+ * @param {string} input.inputType - Input type (text, voice, camera, file)
+ * @param {string} input.timestamp - ISO timestamp of the request
+ * @param {Object|null} [input.location] - User location from Geolocation API
+ * @param {number} [input.location.lat] - Latitude
+ * @param {number} [input.location.lng] - Longitude
+ * @param {Object} classification - Pre-classification result from Stage 1
+ * @param {string} classification.likelyCategory - Predicted category
+ * @param {number} classification.confidence - Confidence score (0-1)
+ * @returns {Object} Enriched input with contextual text prepended
  */
 export function enrichContext(input, classification) {
   const contextParts = [];
@@ -62,7 +80,12 @@ export function enrichContext(input, classification) {
 }
 
 /**
- * Get time-of-day context
+ * Get time-of-day, day-of-week, and seasonal context.
+ * Provides India-specific awareness for emergency service availability,
+ * traffic conditions, and seasonal health risks.
+ *
+ * @param {string} timestamp - ISO timestamp to analyze
+ * @returns {string} Descriptive time context string
  */
 function getTimeContext(timestamp) {
   const date = timestamp ? new Date(timestamp) : new Date();
@@ -117,7 +140,13 @@ function getTimeContext(timestamp) {
 }
 
 /**
- * Get location context
+ * Get location context string from GPS coordinates.
+ * Provides coordinate information for Gemini to suggest nearby services.
+ *
+ * @param {Object} location - User location object
+ * @param {number} location.lat - Latitude
+ * @param {number} location.lng - Longitude
+ * @returns {string} Location context string
  */
 function getLocationContext(location) {
   if (!location || !location.lat || !location.lng) {

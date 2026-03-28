@@ -88,6 +88,16 @@ const Renderer = {
     const el = document.createElement('div');
     el.className = `severity-header severity-header--${severity}`;
     el.setAttribute('role', 'alert');
+
+    // Add source badge if fallback was used
+    const sourceBadge = triage.metadata?.source === 'local-fallback' 
+      ? `
+        <div class="source-badge">
+          <span class="source-badge__icon">🧩</span>
+          Local Intelligence Assessment
+        </div>
+      ` : '';
+
     el.innerHTML = `
       <div class="severity-badge severity-badge--${severity}" aria-hidden="true">
         ${icons[severity]}
@@ -96,7 +106,10 @@ const Renderer = {
         <h3 class="severity-info__title severity-info__title--${severity}">
           ${labels[severity]}: ${this.escapeHtml(triage.title || 'Assessment Complete')}
         </h3>
-        <span class="severity-info__category">${this.escapeHtml(triage.category || 'general')}</span>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <span class="severity-info__category">${this.escapeHtml(triage.category || 'general')}</span>
+          ${sourceBadge}
+        </div>
       </div>
       <div class="severity-info__time">
         <div>${new Date().toLocaleTimeString()}</div>
@@ -305,6 +318,9 @@ const Renderer = {
       </div>
       <div class="metadata-item">
         <strong>Input:</strong> ${this.escapeHtml(metadata.inputType || 'text')}
+      </div>
+      <div class="metadata-item">
+        <strong>Assessed By:</strong> ${this.escapeHtml(metadata.source === 'local-fallback' ? 'Local Intelligence' : 'Gemini 2.0 Flash')}
       </div>
       ${metadata.classification ? `
         <div class="metadata-item">

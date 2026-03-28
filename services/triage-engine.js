@@ -1,27 +1,33 @@
+/**
+ * TRIAGE AI — Triage Engine (Core Pipeline)
+ *
+ * The brain of the application. Implements a 4-stage processing pipeline:
+ *
+ * 1. **CLASSIFY** — Keyword-based pre-classification determines input category
+ * 2. **ENRICH** — Context enricher adds time, location, and seasonal awareness
+ * 3. **STRUCTURE** — Gemini AI processes the enriched input
+ * 4. **VERIFY** — Google Search grounding cross-checks key claims
+ *
+ * @module triage-engine
+ */
+
 import { processWithGemini, verifyWithGrounding } from './gemini-service.js';
 import { enrichContext } from './context-enricher.js';
+import { generateLocalFallback } from './local-fallback.js';
 
 /**
- * TRIAGE ENGINE — The 4-Stage Pipeline
- * 
- * Stage 1: CLASSIFY — Determine input type & urgency
- * Stage 2: ENRICH  — Add contextual data (location, time, etc.)
- * Stage 3: STRUCTURE — Convert to actionable response via Gemini
- * Stage 4: VERIFY — Cross-check with Google Search grounding
- * 
- * @param {Object} input - { text, image, inputType, location, timestamp }
- * @returns {Object} Complete triage response
+ * Process input through the complete 4-stage TRIAGE pipeline.
  */
 export async function triageInput(input) {
   const startTime = Date.now();
 
+  // ── Stage 1: CLASSIFY ───────────────────────────────────────────
+  const classification = classifyInput(input);
+
+  // ── Stage 2: ENRICH ─────────────────────────────────────────────
+  const enrichedInput = enrichContext(input, classification);
+
   try {
-    // ── Stage 1: CLASSIFY ───────────────────────────────────────────
-    const classification = classifyInput(input);
-
-    // ── Stage 2: ENRICH ─────────────────────────────────────────────
-    const enrichedInput = enrichContext(input, classification);
-
     // ── Stage 3: STRUCTURE — Process through Gemini ─────────────────
     const structuredResponse = await processWithGemini({
       text: enrichedInput.enrichedText,
@@ -31,16 +37,19 @@ export async function triageInput(input) {
 
     // ── Stage 4: VERIFY — Cross-check with Search Grounding ────────
     let verifications = [];
-    if (
-      structuredResponse.search_queries &&
-      structuredResponse.search_queries.length > 0
-    ) {
-      verifications = await verifyWithGrounding(
-        structuredResponse.search_queries
-      );
+    try {
+      if (
+        structuredResponse.search_queries &&
+        structuredResponse.search_queries.length > 0
+      ) {
+        verifications = await verifyWithGrounding(
+          structuredResponse.search_queries
+        );
+      }
+    } catch (verifyError) {
+      console.error('Verification stage failed (non-blocking):', verifyError.message);
     }
 
-    // ── Compose Final Response ──────────────────────────────────────
     const processingTime = Date.now() - startTime;
 
     return {
@@ -55,58 +64,35 @@ export async function triageInput(input) {
           timestamp: input.timestamp,
           location: input.location,
           pipeline: ['classify', 'enrich', 'structure', 'verify'],
+          googleServices: ['gemini-2.0-flash', 'google-search-grounding'],
+          source: 'gemini',
         },
       },
     };
   } catch (error) {
+    // ── SMART FALLBACK ──
     const processingTime = Date.now() - startTime;
-    console.error('Triage pipeline error:', error);
+    const errorType = error.status === 429 ? 'quota_exceeded' : 'api_error';
+
+    console.error(`Triage pipeline: Gemini ${errorType}, activating smart local fallback.`);
+
+    const localResponse = generateLocalFallback(input, classification);
 
     return {
-      success: false,
-      error: 'Failed to process input through the triage pipeline.',
+      success: true, 
       triage: {
-        severity: 'normal',
-        category: 'general',
-        title: 'Processing Error',
-        summary:
-          'We encountered an issue processing your input. Please try again or rephrase your input.',
-        actions: [
-          {
-            priority: 1,
-            action: 'Try rephrasing your input',
-            details:
-              'Be as specific as possible about the situation, including location, people involved, and what happened.',
-            timeframe: 'Immediately',
-            type: 'information',
-          },
-          {
-            priority: 2,
-            action: 'If this is a real emergency, call 112 immediately',
-            details:
-              'Do not rely solely on this app in life-threatening situations. Call emergency services directly.',
-            timeframe: 'Immediately',
-            type: 'emergency',
-          },
-        ],
-        emergency_contacts: [
-          {
-            name: 'Universal Emergency',
-            number: '112',
-            relevance: 'For any emergency in India',
-          },
-        ],
-        key_findings: [],
-        warnings: [
-          'This app is an assistance tool. Always call emergency services directly in life-threatening situations.',
-        ],
-        follow_up: [],
+        ...localResponse,
         verifications: [],
         metadata: {
           inputType: input.inputType,
+          classification: classification,
           processingTimeMs: processingTime,
           timestamp: input.timestamp,
-          error: error.message,
+          location: input.location,
+          pipeline: ['classify', 'enrich', 'local-fallback'],
+          googleServices: ['local-intelligence-engine'],
+          source: 'local-fallback',
+          fallbackReason: errorType,
         },
       },
     };
@@ -114,12 +100,11 @@ export async function triageInput(input) {
 }
 
 /**
- * Stage 1: Classify input to determine likely category and pre-processing needs
+ * Stage 1: Classify input to determine likely category.
  */
 function classifyInput(input) {
   const text = (input.text || '').toLowerCase();
 
-  // Keyword-based pre-classification for faster routing
   const patterns = {
     medical: [
       'blood', 'pain', 'injury', 'hurt', 'hospital', 'doctor', 'medicine',
@@ -133,10 +118,18 @@ function classifyInput(input) {
       'truck', 'vehicle', 'traffic', 'fallen', 'trapped', 'fire',
       'burning', 'explosion', 'derail', 'overturn',
     ],
+    fire: [
+      'fire', 'flames', 'smoke', 'burning', 'explosion', 'gas leak', 'lpg',
+      'cylinder leak', 'short circuit', 'on fire', 'building on fire',
+    ],
     disaster: [
       'flood', 'earthquake', 'cyclone', 'tsunami', 'landslide', 'storm',
       'tornado', 'hurricane', 'drought', 'wildfire', 'evacuation',
       'shelter', 'rescue', 'relief', 'disaster', 'emergency',
+    ],
+    animal: [
+      'dog', 'cat', 'cow', 'animal', 'stray', 'wildlife', 'snake', 'monkey',
+      'bite', 'rabies', 'injured dog', 'animal rescue',
     ],
     health_records: [
       'record', 'history', 'report', 'test result', 'lab', 'scan',
@@ -147,6 +140,10 @@ function classifyInput(input) {
       'theft', 'robbery', 'assault', 'attack', 'threat', 'suspicious',
       'police', 'danger', 'unsafe', 'harassment', 'stalking', 'abuse',
       'kidnap', 'missing', 'lost child',
+    ],
+    weather: [
+      'weather', 'forecast', 'monsoon', 'rain', 'heatwave', 'coldwave',
+      'warning', 'alert', 'lightning', 'thunder', 'imd',
     ],
   };
 
@@ -161,7 +158,6 @@ function classifyInput(input) {
     }
   }
 
-  // Image inputs default to a visual analysis category if no text clues
   if (input.image && bestScore === 0) {
     bestCategory = 'visual_analysis';
   }

@@ -1,13 +1,31 @@
 /**
  * TRIAGE AI — Main Application
- * Orchestrates input handling, API communication, and results rendering
+ *
+ * Orchestrates the complete application lifecycle:
+ * - Multi-modal input handling (text, voice, camera, file)
+ * - Server API communication with streaming support
+ * - Results rendering with accessibility announcements
+ * - Firebase Analytics event tracking
+ * - Google Maps integration for location-based services
+ * - Query history with localStorage + Firebase Firestore persistence
+ *
+ * @module App
  */
 
 const App = {
+  /** @type {Object[]} Local history of triage queries */
   history: [],
+
+  /** @type {boolean} Whether a triage is currently being processed */
   isProcessing: false,
 
-  /** Initialize the application */
+  /** @type {{lat: number, lng: number}|null} User's current location */
+  userLocation: null,
+
+  /**
+   * Initialize the application — called on DOMContentLoaded.
+   * Sets up all handlers, loads history, requests location, and initializes Firebase.
+   */
   init() {
     InputHandler.init();
     this.setupSubmit();
@@ -18,6 +36,9 @@ const App = {
     // Request location permission early
     this.requestLocation();
 
+    // Initialize Firebase (non-blocking)
+    this.initFirebase();
+
     console.log(
       '%c🚨 TRIAGE AI %c— From Chaos to Clarity, Instantly',
       'color: #8b5cf6; font-size: 20px; font-weight: bold;',
@@ -25,7 +46,27 @@ const App = {
     );
   },
 
-  /** Setup submit button */
+  /**
+   * Initialize Firebase client for analytics and cloud persistence.
+   * Non-blocking — app works fully offline if Firebase is not configured.
+   */
+  async initFirebase() {
+    try {
+      const initialized = await FirebaseClient.init();
+      if (initialized) {
+        FirebaseClient.setupEngagementTracking();
+        FirebaseClient.trackEvent('app_start', {
+          has_location: !!this.userLocation,
+        });
+      }
+    } catch {
+      // Firebase is optional — app works without it
+    }
+  },
+
+  /**
+   * Setup submit button click handler.
+   */
   setupSubmit() {
     const btnSubmit = document.getElementById('btn-submit');
     if (!btnSubmit) return;
@@ -33,19 +74,29 @@ const App = {
     btnSubmit.addEventListener('click', () => this.handleSubmit());
   },
 
-  /** Setup scenario buttons */
+  /**
+   * Setup scenario quick-action buttons.
+   * Each button pre-fills the input and auto-submits.
+   */
   setupScenarios() {
     document.querySelectorAll('.btn--scenario').forEach((btn) => {
       btn.addEventListener('click', () => {
         const scenario = btn.dataset.scenario;
+        const scenarioName = btn.textContent.trim();
         InputHandler.setText(scenario);
+
+        // Track scenario click in Firebase
+        FirebaseClient.trackScenarioClick(scenarioName);
+
         // Auto-submit the scenario
         setTimeout(() => this.handleSubmit(), 300);
       });
     });
   },
 
-  /** Setup history sidebar */
+  /**
+   * Setup history sidebar toggle handlers.
+   */
   setupHistory() {
     const btnHistory = document.getElementById('btn-history');
     const btnClose = document.getElementById('btn-close-sidebar');
@@ -60,7 +111,10 @@ const App = {
     });
   },
 
-  /** Request user location */
+  /**
+   * Request user's geolocation for location-aware triage.
+   * Stores location for use in triage requests and map rendering.
+   */
   async requestLocation() {
     try {
       this.userLocation = await MapService.getCurrentLocation();
@@ -69,7 +123,10 @@ const App = {
     }
   },
 
-  /** Handle form submission */
+  /**
+   * Handle triage form submission.
+   * Validates input, sends to streaming API, and renders results.
+   */
   async handleSubmit() {
     if (this.isProcessing) return;
 
@@ -112,7 +169,9 @@ const App = {
     }
   },
 
-  /** Show loading state */
+  /**
+   * Show loading state with animated pipeline stages.
+   */
   showLoading() {
     const results = document.getElementById('results');
     const loading = document.getElementById('loading');
@@ -153,7 +212,10 @@ const App = {
     results?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
 
-  /** Update pipeline stage from SSE */
+  /**
+   * Update pipeline stage visualization from SSE event.
+   * @param {Object} data - Stage update data from server
+   */
   updatePipelineStage(data) {
     const stage = document.querySelector(`.loading__stage[data-stage="${data.stage}"]`);
     if (stage) {
@@ -161,7 +223,13 @@ const App = {
     }
   },
 
-  /** Handle successful result */
+  /**
+   * Handle successful triage result.
+   * Renders the response, saves to history, tracks in Firebase, and announces to screen readers.
+   *
+   * @param {Object} data - Triage response from server
+   * @param {Object} input - Original input data
+   */
   handleResult(data, input) {
     const loading = document.getElementById('loading');
     const container = document.getElementById('results-container');
@@ -185,8 +253,11 @@ const App = {
       // Reset submit button
       this.resetSubmit();
 
-      // Save to history
+      // Save to history (local + Firebase)
       this.saveToHistory(input, data);
+
+      // Track in Firebase Analytics
+      FirebaseClient.trackTriageSubmission(data.triage, input.inputType);
 
       // Announce severity to screen reader
       const severity = data.triage?.severity || 'normal';
@@ -198,7 +269,10 @@ const App = {
     }, 500);
   },
 
-  /** Handle errors */
+  /**
+   * Handle triage processing errors.
+   * @param {Error} error - The error that occurred
+   */
   handleError(error) {
     console.error('Triage error:', error);
 
@@ -208,9 +282,16 @@ const App = {
     this.resetSubmit();
     this.showToast(error.message || 'Something went wrong. Please try again.', 'error');
     A11y.announce('Error occurred during processing. Please try again.', 'assertive');
+
+    // Track error in Firebase
+    FirebaseClient.trackEvent('triage_error', {
+      error_message: error.message || 'Unknown error',
+    });
   },
 
-  /** Reset submit button */
+  /**
+   * Reset the submit button to its default state.
+   */
   resetSubmit() {
     this.isProcessing = false;
     const btnSubmit = document.getElementById('btn-submit');
@@ -220,7 +301,12 @@ const App = {
     }
   },
 
-  /** Save to history */
+  /**
+   * Save a triage result to history (localStorage + Firebase Firestore).
+   *
+   * @param {Object} input - Original input data
+   * @param {Object} data - Triage result data
+   */
   saveToHistory(input, data) {
     const entry = {
       id: Date.now(),
@@ -234,6 +320,7 @@ const App = {
     this.history.unshift(entry);
     if (this.history.length > 20) this.history.pop();
 
+    // Save to localStorage (local persistence)
     try {
       localStorage.setItem('triage-history', JSON.stringify(this.history));
     } catch {
@@ -243,7 +330,9 @@ const App = {
     this.renderHistory();
   },
 
-  /** Load history from localStorage */
+  /**
+   * Load history from localStorage.
+   */
   loadHistory() {
     try {
       const stored = localStorage.getItem('triage-history');
@@ -256,7 +345,9 @@ const App = {
     }
   },
 
-  /** Render history list */
+  /**
+   * Render the history sidebar list from in-memory history.
+   */
   renderHistory() {
     const list = document.getElementById('history-list');
     if (!list) return;
@@ -305,7 +396,12 @@ const App = {
     });
   },
 
-  /** Show toast notification */
+  /**
+   * Show a toast notification.
+   *
+   * @param {string} message - Notification message
+   * @param {string} [type='info'] - Toast type (info, error, success)
+   */
   showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;

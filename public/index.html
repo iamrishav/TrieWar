@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="TRIAGE AI — Universal Emergency & Action Intelligence. Transform unstructured inputs into structured, verified, life-saving actions powered by Google Gemini.">
+  <meta name="description" content="TRIAGE AI — Universal Emergency & Action Intelligence. Transform unstructured inputs into structured, verified, life-saving actions powered by Google Gemini, Google Maps, and Firebase.">
   <meta name="theme-color" content="#0a0a0f">
+  <meta name="keywords" content="triage, emergency, AI, Gemini, Google Maps, Firebase, PromptWars">
+  <meta name="author" content="TrieWar">
   <title>TRIAGE AI — From Chaos to Clarity</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
@@ -40,14 +42,14 @@
         </div>
       </div>
       <div class="header__actions">
-        <button class="btn btn--icon" id="btn-a11y" aria-label="Toggle high contrast mode" title="High Contrast">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn btn--icon" id="btn-a11y" aria-label="Toggle high contrast mode" title="High Contrast" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 2 A10 10 0 0 1 12 22 Z"/>
           </svg>
         </button>
-        <button class="btn btn--icon" id="btn-history" aria-label="View history" title="History">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn btn--icon" id="btn-history" aria-label="View history" title="History" aria-expanded="false" aria-controls="sidebar">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
           </svg>
@@ -81,6 +83,8 @@
                 placeholder="Describe any situation, paste medical records, or ask about an emergency..."
                 rows="1"
                 aria-label="Describe your situation"
+                aria-required="true"
+                aria-invalid="false"
                 autofocus
               ></textarea>
               <div class="input-bar__actions">
@@ -106,8 +110,9 @@
                 <input type="file" id="file-input" class="sr-only" accept="image/*,.pdf,.txt,.doc,.docx" aria-label="Upload a file">
               </div>
             </div>
-            <button class="btn btn--primary btn--submit" id="btn-submit" aria-label="Analyze input">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <button class="btn btn--primary btn--submit" id="btn-submit" aria-label="Analyze input" aria-describedby="submit-description">
+              <span id="submit-description" class="sr-only">Submit input for AI triage analysis</span>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>
               <span>Triage</span>
@@ -196,12 +201,12 @@
             <div class="loading__connector"></div>
             <div class="loading__stage" data-stage="structuring">
               <div class="loading__dot"></div>
-              <span>Structuring actions...</span>
+              <span>Structuring actions via Gemini...</span>
             </div>
             <div class="loading__connector"></div>
             <div class="loading__stage" data-stage="verifying">
               <div class="loading__dot"></div>
-              <span>Verifying information...</span>
+              <span>Verifying with Google Search...</span>
             </div>
           </div>
         </div>
@@ -215,8 +220,8 @@
     <aside class="sidebar" id="sidebar" hidden role="complementary" aria-label="Query history">
       <div class="sidebar__header">
         <h2>History</h2>
-        <button class="btn btn--icon" id="btn-close-sidebar" aria-label="Close history">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn btn--icon" id="btn-close-sidebar" aria-label="Close history" aria-controls="sidebar">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
@@ -227,8 +232,10 @@
     <!-- ── Footer ─────────────────────────────────────────────── -->
     <footer class="footer" role="contentinfo">
       <p>
-        Powered by <strong>Google Gemini</strong> · Built for 
-        <strong>PromptWars</strong> · 
+        Powered by <strong>Google Gemini</strong> · 
+        <strong>Google Maps Platform</strong> · 
+        <strong>Firebase</strong> · 
+        Built for <strong>PromptWars</strong> · 
         <span class="footer__warning">⚠️ In life-threatening emergencies, always call 112 directly</span>
       </p>
     </footer>
@@ -240,11 +247,13 @@
   <!-- ── Screen Reader Announcements ──────────────────────────── -->
   <div class="sr-only" id="sr-announcer" aria-live="assertive" aria-atomic="true"></div>
 
+  <!-- ── JavaScript Modules ───────────────────────────────────── -->
   <script src="/js/accessibility.js"></script>
   <script src="/js/api-client.js"></script>
   <script src="/js/input-handler.js"></script>
   <script src="/js/renderer.js"></script>
   <script src="/js/map-service.js"></script>
+  <script src="/js/firebase-client.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

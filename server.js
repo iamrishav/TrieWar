@@ -1,18 +1,24 @@
+import './polyfill.js';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 
-// ── Polyfill for Node.js < 18 (Headers, Request, Response) ──────────
-if (typeof globalThis.Headers === 'undefined') {
-  const { default: fetch, Headers, Request, Response } = await import('node-fetch');
-  globalThis.fetch = globalThis.fetch || fetch;
-  globalThis.Headers = Headers;
-  globalThis.Request = Request;
-  globalThis.Response = Response;
-}
-
 import { triageInput } from './services/triage-engine.js';
+import { searchNearbyPlaces, getDirections, reverseGeocode } from './services/maps-api-service.js';
+import {
+  isFirebaseConfigured,
+  getFirebaseClientConfig,
+  saveTriageSession,
+  updateEmergencyStats,
+  getRecentSessions,
+  getEmergencyStatsSummary,
+} from './services/firebase-service.js';
+
+import logger from './utils/logger.js';
+import { rateLimit } from './middlewares/rate-limiter.js';
+import { setSecurityHeaders } from './middlewares/security.js';
+import { validateTriagePayload, validateCoordinates } from './middlewares/validator.js';
 
 dotenv.config();
 
@@ -23,49 +29,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ── Security Middleware ──────────────────────────────────────────────
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com; connect-src 'self'; frame-src https://www.google.com https://maps.google.com"
-  );
-  next();
-});
+app.use(setSecurityHeaders);
 
 // ── Body Parsing ─────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// ── Rate Limiting (simple in-memory) ─────────────────────────────────
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const RATE_LIMIT_MAX = 20; // 20 requests per minute
-
-function rateLimit(req, res, next) {
-  const ip = req.ip || req.connection.remoteAddress;
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT_WINDOW;
-
-  if (!rateLimitMap.has(ip)) {
-    rateLimitMap.set(ip, []);
-  }
-
-  const requests = rateLimitMap.get(ip).filter((t) => t > windowStart);
-  requests.push(now);
-  rateLimitMap.set(ip, requests);
-
-  if (requests.length > RATE_LIMIT_MAX) {
-    return res.status(429).json({
-      error: 'Too many requests. Please slow down.',
-      retryAfter: Math.ceil(RATE_LIMIT_WINDOW / 1000),
-    });
-  }
-
-  next();
-}
 
 // ── Static Files ─────────────────────────────────────────────────────
 app.use(express.static(join(__dirname, 'public')));
@@ -77,46 +45,71 @@ app.get('/api/health', (req, res) => {
     service: 'TRIAGE AI',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    googleServices: {
+      gemini: !!process.env.GEMINI_API_KEY,
+      maps: !!process.env.GOOGLE_MAPS_API_KEY,
+      firebase: isFirebaseConfigured(),
+    },
   });
 });
 
-// ── Maps Config Endpoint ─────────────────────────────────────────────
+// ── Config Endpoints ─────────────────────────────────────────────────
+
+/**
+ * GET /api/config/maps — Returns the Google Maps API key for client-side usage
+ */
 app.get('/api/config/maps', (req, res) => {
   res.json({
     apiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   });
 });
 
+/**
+ * GET /api/config/firebase — Returns Firebase client config for frontend initialization
+ */
+app.get('/api/config/firebase', (req, res) => {
+  const config = getFirebaseClientConfig();
+  res.json({
+    configured: !!config,
+    config: config || {},
+  });
+});
+
 // ── Main Triage Endpoint ─────────────────────────────────────────────
-app.post('/api/triage', rateLimit, async (req, res) => {
+app.post('/api/triage', rateLimit, validateTriagePayload, async (req, res) => {
   try {
     const { text, image, inputType, location } = req.body;
 
-    // Input validation
-    if (!text && !image) {
-      return res.status(400).json({
-        error: 'Please provide text or image input.',
-      });
-    }
-
-    // Sanitize text input
-    const sanitizedText = text
-      ? text.replace(/<[^>]*>/g, '').trim().substring(0, 5000)
-      : '';
+    logger.info(`Processing triage request (type: ${inputType})`);
 
     const result = await triageInput({
-      text: sanitizedText,
+      text, // previously sanitized by validateTriagePayload
       image: image || null,
       inputType: inputType || 'text',
       location: location || null,
       timestamp: new Date().toISOString(),
     });
 
+    // Save to Firebase Firestore (non-blocking)
+    if (isFirebaseConfigured()) {
+      saveTriageSession({
+        inputText: text,
+        inputType: inputType || 'text',
+        triage: result.triage,
+        location: location || null,
+        userAgent: req.headers['user-agent'] || '',
+      }).catch((err) => logger.warn(`Firebase update skipped: ${err.message}`));
+
+      updateEmergencyStats(result.triage).catch((err) =>
+        logger.warn(`Firebase stats skipped: ${err.message}`)
+      );
+    }
+
     res.json(result);
   } catch (error) {
-    console.error('Triage error:', error);
+    logger.error('Triage error caught at handler:', error);
     res.status(500).json({
-      error: 'An error occurred while processing your input.',
+      error: 'An internal error occurred while analyzing your situation.',
       severity: 'error',
     });
   }
@@ -158,6 +151,19 @@ app.post('/api/triage/stream', rateLimit, async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Save to Firebase (non-blocking)
+    if (isFirebaseConfigured()) {
+      saveTriageSession({
+        inputText: sanitizedText,
+        inputType: inputType || 'text',
+        triage: result.triage,
+        location: location || null,
+        userAgent: req.headers['user-agent'] || '',
+      }).catch(() => {});
+
+      updateEmergencyStats(result.triage).catch(() => {});
+    }
+
     res.write(`data: ${JSON.stringify({ stage: 'complete', result })}\n\n`);
     res.end();
   } catch (error) {
@@ -169,6 +175,124 @@ app.post('/api/triage/stream', rateLimit, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// ── Google Maps Platform API Proxy Endpoints ─────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/places/nearby — Search for nearby emergency services
+ * Proxied through server to protect the Google Maps API key.
+ *
+ * @body {number} lat - User latitude
+ * @body {number} lng - User longitude
+ * @body {string} category - Triage category (medical, accident, disaster, safety)
+ * @body {number} [radius=5000] - Search radius in meters
+ */
+app.post('/api/places/nearby', rateLimit, validateCoordinates, async (req, res) => {
+  try {
+    const { lat, lng, category, radius } = req.body;
+
+    logger.info(`Fetching nearby places (category: ${category})`);
+
+    const result = await searchNearbyPlaces({
+      lat, // numeric validation ensures safety
+      lng,
+      category: category || 'general',
+      radiusMeters: parseInt(radius, 10) || 5000,
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Places API proxy error:', error);
+    res.status(500).json({ error: 'Failed to search nearby places.' });
+  }
+});
+
+/**
+ * POST /api/directions — Get directions to a destination
+ * Proxied through server to protect the Google Maps API key.
+ *
+ * @body {number} originLat - Origin latitude
+ * @body {number} originLng - Origin longitude
+ * @body {number} destLat - Destination latitude
+ * @body {number} destLng - Destination longitude
+ * @body {string} [mode=driving] - Travel mode
+ */
+app.post('/api/directions', rateLimit, async (req, res) => {
+  try {
+    const { originLat, originLng, destLat, destLng, mode } = req.body;
+
+    if (!originLat || !originLng || !destLat || !destLng) {
+      return res.status(400).json({ error: 'Origin and destination coordinates are required.' });
+    }
+
+    const result = await getDirections({
+      originLat: parseFloat(originLat),
+      originLng: parseFloat(originLng),
+      destLat: parseFloat(destLat),
+      destLng: parseFloat(destLng),
+      mode: mode || 'driving',
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Directions API proxy error:', error);
+    res.status(500).json({ error: 'Failed to get directions.' });
+  }
+});
+
+/**
+ * POST /api/geocode/reverse — Reverse geocode coordinates to address
+ * Proxied through server to protect the Google Maps API key.
+ *
+ * @body {number} lat - Latitude to geocode
+ * @body {number} lng - Longitude to geocode
+ */
+app.post('/api/geocode/reverse', rateLimit, validateCoordinates, async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+
+    const result = await reverseGeocode({ lat, lng });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Geocoding API proxy error:', error);
+    res.status(500).json({ error: 'Failed to reverse geocode.' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// ── Firebase Firestore History Endpoints ─────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/history — Get recent triage sessions from Firestore
+ * @query {number} [limit=20] - Maximum sessions to retrieve
+ */
+app.get('/api/history', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const result = await getRecentSessions(limit);
+    res.json(result);
+  } catch (error) {
+    console.error('History fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch history.' });
+  }
+});
+
+/**
+ * GET /api/stats — Get emergency statistics summary from Firestore
+ */
+app.get('/api/stats', async (req, res) => {
+  try {
+    const result = await getEmergencyStatsSummary();
+    res.json(result);
+  } catch (error) {
+    console.error('Stats fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics.' });
+  }
+});
+
 // ── SPA Fallback ─────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'index.html'));
@@ -176,12 +300,18 @@ app.get('*', (req, res) => {
 
 // ── Start Server ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`
-  ╔══════════════════════════════════════════╗
-  ║   🚨 TRIAGE AI — Server Running         ║
-  ║   http://localhost:${PORT}                  ║
-  ║   From Chaos to Clarity, Instantly.      ║
-  ╚══════════════════════════════════════════╝
+  const firebaseStatus = isFirebaseConfigured() ? '✅ Connected' : '⚠️  Not configured';
+  logger.info(`
+  ╔══════════════════════════════════════════════════╗
+  ║   🚨 TRIAGE AI — Server Running                 ║
+  ║   http://localhost:${PORT}                          ║
+  ║   From Chaos to Clarity, Instantly.              ║
+  ║                                                  ║
+  ║   Google Services:                               ║
+  ║   • Gemini API: ✅ Ready                         ║
+  ║   • Maps Platform: ✅ Ready                      ║
+  ║   • Firebase: ${firebaseStatus.padEnd(33)}║
+  ╚══════════════════════════════════════════════════╝
   `);
 });
 
